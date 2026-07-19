@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tradeflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tradeflow
+      POSTGRES_PASSWORD: tradeflow_secret
+      POSTGRES_DB: tradeflow
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tradeflow -d tradeflow']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tradeflow-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tradeflow-api
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_PREFIX: /api
+      DATABASE_URL: postgresql://tradeflow:tradeflow_secret@postgres:5432/tradeflow?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access-secret-min-32-chars-long!!}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-secret-min-32-chars-long!!}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      ALPACA_CLIENT_ID: ${ALPACA_CLIENT_ID:-${ALPACA_API_KEY}}
+      ALPACA_CLIENT_SECRET: ${ALPACA_CLIENT_SECRET:-${ALPACA_API_SECRET}}
+      ALPACA_AUTH_URL: ${ALPACA_AUTH_URL:-https://authx.alpaca.markets/v1/oauth2/token}
+      ALPACA_BASE_URL: ${ALPACA_BASE_URL:-https://broker-api.sandbox.alpaca.markets}
+      ALPACA_DATA_URL: ${ALPACA_DATA_URL:-https://data.sandbox.alpaca.markets}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
